@@ -7,7 +7,7 @@ const hintContainerEl = document.getElementById('hint-container');
 const hintTextEl = document.getElementById('hint-text');
 const nextButtonEl = document.getElementById('next-button');
 
-// Novos seletores de Dicas e Timer
+// Seletores de Dicas e Timer
 const timerEl = document.getElementById('timer');
 const timerBarEl = document.getElementById('timer-bar');
 const hintEliminateBtn = document.getElementById('hint-eliminate');
@@ -22,7 +22,7 @@ let score = 0;
 let correctAnswer = null;
 let isAnswered = false;
 
-// Novas variáveis de Dicas e Timer
+// Variáveis de Dicas e Timer
 let eliminateHintsLeft = 3;
 let capitalHintsLeft = 2;
 let timerInterval; // Para guardar a referência do setInterval
@@ -38,7 +38,11 @@ hintCapitalBtn.addEventListener('click', useCapitalHint);
 
 async function fetchCountries() {
     try {
+        // IMPORTANTE: Trocamos "all" por "region/europe" para
+        // um carregamento muito mais rápido e evitar timeouts.
+        // Você pode trocar por "americas", "asia", "africa", etc.
         const response = await fetch('https://restcountries.com/v3.1/region/europe?fields=name,flags,capital');
+        
         if (!response.ok) throw new Error('Não foi possível carregar os dados.');
 
         allCountries = await response.json().then(data => 
@@ -73,10 +77,19 @@ function loadNewRound() {
     const options = [];
     const tempCountries = [...allCountries];
     for (let i = 0; i < 4; i++) {
+        // Garante que a lista de países seja suficiente
+        if (tempCountries.length === 0) break; 
         const randomIndex = Math.floor(Math.random() * tempCountries.length);
         options.push(tempCountries.splice(randomIndex, 1)[0]);
     }
+    
+    // Pega o primeiro como resposta (ou um aleatório)
     correctAnswer = options[Math.floor(Math.random() * options.length)];
+    if (!correctAnswer) {
+         feedbackMessageEl.textContent = "Erro ao carregar rodada.";
+         return;
+    }
+
 
     // 2. Mostrar bandeira
     flagImageEl.src = correctAnswer.flags.svg;
@@ -106,16 +119,16 @@ function checkAnswer(selectedCountry, button) {
     hintEliminateBtn.disabled = true;
     hintCapitalBtn.disabled = true;
 
-    if (selectedCountry.name.common === correctAnswer.name.common) {
+    if (selectedCountry && selectedCountry.name.common === correctAnswer.name.common) {
         // ACERTOU
         score++;
         scoreEl.textContent = score;
         feedbackMessageEl.textContent = "Correto! 🎉";
         button.classList.add('correct');
     } else {
-        // ERROU
-        feedbackMessageEl.textContent = "Errado! 😢";
-        button.classList.add('incorrect');
+        // ERROU (ou o tempo acabou)
+        feedbackMessageEl.textContent = (selectedCountry === null) ? "Tempo esgotado! ⌛" : "Errado! 😢";
+        if(button) button.classList.add('incorrect'); // Só adiciona classe se um botão foi clicado
 
         // Mostra a resposta certa
         document.querySelectorAll('.option-btn').forEach(btn => {
@@ -171,16 +184,12 @@ function stopTimer() {
     clearInterval(timerInterval);
     
     // Para a transição da barra onde ela estiver
-    const currentWidth = timerBarEl.offsetWidth;
+    const currentWidth = timerBarEl.offsetWidth / timerBarEl.parentElement.offsetWidth * 100;
     timerBarEl.style.transition = 'none';
-    timerBarEl.style.width = `${currentWidth}px`;
+    timerBarEl.style.width = `${currentWidth}%`;
 }
 
 function handleTimeOut() {
-    stopTimer();
-    feedbackMessageEl.textContent = "Tempo esgotado! ⌛";
-    
-    // Simula um clique "errado" para mostrar a resposta
     // Passamos 'null' pois o jogador não selecionou nada
     checkAnswer(null, null);
 }
@@ -238,5 +247,4 @@ function showCapitalHint(isHintUsed) {
     hintTextEl.textContent = hintMsg;
     hintContainerEl.classList.remove('hidden');
     hintCapitalBtn.disabled = true; // Desabilita para esta rodada
-
 }
