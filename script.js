@@ -37,25 +37,38 @@ hintEliminateBtn.addEventListener('click', useEliminateHint);
 hintCapitalBtn.addEventListener('click', useCapitalHint);
 
 async function fetchCountries() {
-    try {
-        // IMPORTANTE: Trocamos "all" por "region/europe" para
-        // um carregamento muito mais rápido e evitar timeouts.
-        // Você pode trocar por "americas", "asia", "africa", etc.
-        const response = await fetch('https://restcountries.com/v3.1/region/europe?fields=name,flags,capital');
-        
-        if (!response.ok) throw new Error('Não foi possível carregar os dados.');
+    // 💡 Melhoria: Fallback para tentar carregar de diferentes regiões
+    const endpoints = [
+        'https://restcountries.com/v3.1/region/europe?fields=name,flags,capital',
+        'https://restcountries.com/v3.1/region/americas?fields=name,flags,capital', 
+        'https://restcountries.com/v3.1/all?fields=name,flags,capital' // Último recurso
+    ];
 
-        allCountries = await response.json().then(data => 
-            data.filter(country => country.capital && country.capital.length > 0 && country.name.common.length < 20)
-        ); // Filtra países sem capital ou com nomes muito longos
-        
-        updateHintCounters();
-        loadNewRound();
+    for (const url of endpoints) {
+        try {
+            const response = await fetch(url);
+            
+            if (!response.ok) throw new Error(`Falha ao carregar de ${url}`);
 
-    } catch (error) {
-        console.error(error);
-        feedbackMessageEl.textContent = "Erro ao carregar o jogo. Tente recarregar.";
+            let data = await response.json();
+            
+            // Filtra países sem capital ou com nomes muito longos
+            allCountries = data.filter(country => country.capital && country.capital.length > 0 && country.name.common.length < 20);
+            
+            if (allCountries.length < 10) throw new Error("Países insuficientes após filtro.");
+            
+            updateHintCounters();
+            loadNewRound();
+            return; // Sai da função após o sucesso
+
+        } catch (error) {
+            console.warn(`Tentativa de carregamento falhou: ${error.message}. Tentando o próximo endpoint...`);
+            // Continua para o próximo item no loop
+        }
     }
+
+    // Se o loop terminou sem sucesso
+    feedbackMessageEl.textContent = "Erro ao carregar o jogo. Tente recarregar.";
 }
 
 
@@ -69,13 +82,18 @@ function loadNewRound() {
     hintTextEl.textContent = '';
     nextButtonEl.classList.add('hidden');
     
+    // 💡 Melhoria: Limpa a src da bandeira antes de carregar a nova
+    flagImageEl.src = ''; 
+    flagImageEl.alt = 'Carregando Bandeira...';
+
     // Reseta botões de dica
     hintEliminateBtn.disabled = eliminateHintsLeft === 0;
     hintCapitalBtn.disabled = capitalHintsLeft === 0;
 
     // 1. Escolher 4 países
     const options = [];
-    const tempCountries = [...allCountries];
+    // 💡 Evita que as dicas que foram usadas na rodada anterior afetem a próxima
+    const tempCountries = [...allCountries]; 
     for (let i = 0; i < 4; i++) {
         // Garante que a lista de países seja suficiente
         if (tempCountries.length === 0) break; 
@@ -114,10 +132,10 @@ function checkAnswer(selectedCountry, button) {
     
     stopTimer(); // Para o cronômetro
     
-    // Desabilita todos os botões de opção e dicas
+    // Desabilita todos os botões de opção.
     document.querySelectorAll('.option-btn').forEach(btn => btn.disabled = true);
-    hintEliminateBtn.disabled = true;
-    hintCapitalBtn.disabled = true;
+    // A dica da capital é desabilitada porque será mostrada em caso de erro.
+    hintCapitalBtn.disabled = true; 
 
     if (selectedCountry && selectedCountry.name.common === correctAnswer.name.common) {
         // ACERTOU
@@ -125,11 +143,17 @@ function checkAnswer(selectedCountry, button) {
         scoreEl.textContent = score;
         feedbackMessageEl.textContent = "Correto! 🎉";
         button.classList.add('correct');
+        // Se acertou, desabilita a dica de eliminação também
+        hintEliminateBtn.disabled = true; 
     } else {
         // ERROU (ou o tempo acabou)
         feedbackMessageEl.textContent = (selectedCountry === null) ? "Tempo esgotado! ⌛" : "Errado! 😢";
         if(button) button.classList.add('incorrect'); // Só adiciona classe se um botão foi clicado
 
+        // 💡 Melhoria: Mantém a possibilidade de usar a dica de eliminação 
+        // após o erro, se houver dicas restantes e opções para eliminar.
+        hintEliminateBtn.disabled = eliminateHintsLeft === 0; 
+        
         // Mostra a resposta certa
         document.querySelectorAll('.option-btn').forEach(btn => {
             if (btn.textContent === correctAnswer.name.common) {
@@ -184,9 +208,15 @@ function stopTimer() {
     clearInterval(timerInterval);
     
     // Para a transição da barra onde ela estiver
-    const currentWidth = timerBarEl.offsetWidth / timerBarEl.parentElement.offsetWidth * 100;
-    timerBarEl.style.transition = 'none';
-    timerBarEl.style.width = `${currentWidth}%`;
+    // Calcula a largura atual para manter a posição visual
+    const parentWidth = timerBarEl.parentElement.offsetWidth;
+    const currentWidth = timerBarEl.offsetWidth;
+    // Evita divisão por zero
+    if (parentWidth > 0) { 
+        const percentage = (currentWidth / parentWidth) * 100;
+        timerBarEl.style.transition = 'none';
+        timerBarEl.style.width = `${percentage}%`;
+    }
 }
 
 function handleTimeOut() {
@@ -204,8 +234,6 @@ function updateHintCounters() {
 
 function useEliminateHint() {
     if (eliminateHintsLeft > 0 && !isAnswered) {
-        eliminateHintsLeft--;
-        updateHintCounters();
         
         // Encontra um botão que SEJA INCORRETO e NÃO ESTEJA eliminado
         const incorrectButton = Array.from(document.querySelectorAll('.option-btn')).find(btn => 
@@ -213,7 +241,12 @@ function useEliminateHint() {
         );
 
         if (incorrectButton) {
+            eliminateHintsLeft--;
+            updateHintCounters();
             incorrectButton.classList.add('eliminated');
+            
+            // 💡 Melhoria: Desabilita o botão para esta rodada, já que foi usada.
+            hintEliminateBtn.disabled = true; 
         }
         
         // Desabilita o botão de dica se acabar
