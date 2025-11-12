@@ -38,7 +38,7 @@ hintCapitalBtn.addEventListener('click', useCapitalHint);
 
 async function fetchCountries() {
     try {
-        const response = await fetch('https://restcountries.com/v3.1/all?fields=name,flags,capital');
+        const response = await fetch('https://restcountries.com/v3.1/region/europe?fields=name,flags,capital');
         if (!response.ok) throw new Error('Não foi possível carregar os dados.');
 
         allCountries = await response.json().then(data => 
@@ -238,4 +238,5 @@ function showCapitalHint(isHintUsed) {
     hintTextEl.textContent = hintMsg;
     hintContainerEl.classList.remove('hidden');
     hintCapitalBtn.disabled = true; // Desabilita para esta rodada
+
 }
